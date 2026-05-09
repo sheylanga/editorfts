@@ -46,11 +46,18 @@ namespace edf
         private void btnOpen_Click(object? sender, EventArgs e)
         {
             using var ofd = new OpenFileDialog();
-            ofd.Filter = "Images|*.png;*.jpg;*.jpeg";
+            ofd.Filter = "All Image Files|*.bmp;*.dib;*.jpg;*.jpeg;*.jpe;*.jfif;*.png;*.gif;*.tif;*.tiff;*.ico|All Files|*.*";
             if (ofd.ShowDialog() != DialogResult.OK) return;
 
-            var loaded = new Bitmap(ofd.FileName);
-            LoadBitmap(loaded);
+            try
+            {
+                var loaded = new Bitmap(ofd.FileName);
+                LoadBitmap(loaded);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"No se pudo abrir el archivo como imagen:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void LoadBitmap(Bitmap bmp)
