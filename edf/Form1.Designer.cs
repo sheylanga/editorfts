@@ -29,7 +29,6 @@
         private void InitializeComponent()
         {
             tableLayoutPanel = new TableLayoutPanel();
-            canvas = new DoubleBufferedPictureBox();
             panelControls = new FlowLayoutPanel();
             btnOpen = new Button();
             btnSave = new Button();
@@ -49,16 +48,21 @@
             lblSaturation = new Label();
             trackSaturation = new TrackBar();
             lblBrushSize = new Label();
-            trackBrushSize = new TrackBar();
             lblBrushSizeValue = new Label();
+            trackBrushSize = new TrackBar();
+            canvas = new PictureBox();
+            webMapa = new Microsoft.Web.WebView2.WinForms.WebView2();
+            txtCoordenadas = new TextBox();
+            btnMostrarUbicacion = new Button();
             tableLayoutPanel.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)canvas).BeginInit();
             panelControls.SuspendLayout();
             groupAdjusts.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)trackBrightness).BeginInit();
             ((System.ComponentModel.ISupportInitialize)trackContrast).BeginInit();
             ((System.ComponentModel.ISupportInitialize)trackSaturation).BeginInit();
             ((System.ComponentModel.ISupportInitialize)trackBrushSize).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)canvas).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)webMapa).BeginInit();
             SuspendLayout();
             // 
             // tableLayoutPanel
@@ -66,30 +70,15 @@
             tableLayoutPanel.ColumnCount = 2;
             tableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 75F));
             tableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            tableLayoutPanel.Controls.Add(canvas, 0, 0);
             tableLayoutPanel.Controls.Add(panelControls, 1, 0);
-            tableLayoutPanel.Dock = DockStyle.Fill;
+            tableLayoutPanel.Controls.Add(canvas, 0, 0);
             tableLayoutPanel.Location = new Point(0, 0);
             tableLayoutPanel.Name = "tableLayoutPanel";
             tableLayoutPanel.RowCount = 1;
             tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            tableLayoutPanel.Size = new Size(1000, 692);
+            tableLayoutPanel.Size = new Size(1000, 574);
             tableLayoutPanel.TabIndex = 0;
-            // 
-            // canvas
-            // 
-            canvas.BorderStyle = BorderStyle.FixedSingle;
-            canvas.Dock = DockStyle.Fill;
-            canvas.Location = new Point(3, 3);
-            canvas.Name = "canvas";
-            canvas.Size = new Size(744, 686);
-            canvas.SizeMode = PictureBoxSizeMode.Zoom;
-            canvas.TabIndex = 0;
-            canvas.TabStop = false;
-            canvas.Paint += canvas_Paint;
-            canvas.MouseDown += canvas_MouseDown;
-            canvas.MouseMove += canvas_MouseMove;
-            canvas.MouseUp += canvas_MouseUp;
+            tableLayoutPanel.Paint += tableLayoutPanel_Paint;
             // 
             // panelControls
             // 
@@ -112,7 +101,7 @@
             panelControls.FlowDirection = FlowDirection.TopDown;
             panelControls.Location = new Point(753, 3);
             panelControls.Name = "panelControls";
-            panelControls.Size = new Size(244, 686);
+            panelControls.Size = new Size(244, 568);
             panelControls.TabIndex = 1;
             // 
             // btnOpen
@@ -295,6 +284,15 @@
             lblBrushSize.TabIndex = 11;
             lblBrushSize.Text = "Tamaño pincel";
             // 
+            // lblBrushSizeValue
+            // 
+            lblBrushSizeValue.AutoSize = true;
+            lblBrushSizeValue.Location = new Point(3, 481);
+            lblBrushSizeValue.Name = "lblBrushSizeValue";
+            lblBrushSizeValue.Size = new Size(13, 15);
+            lblBrushSizeValue.TabIndex = 13;
+            lblBrushSizeValue.Text = "5";
+            // 
             // trackBrushSize
             // 
             trackBrushSize.Location = new Point(3, 499);
@@ -306,26 +304,60 @@
             trackBrushSize.Value = 5;
             trackBrushSize.Scroll += trackBrushSize_Scroll;
             // 
-            // lblBrushSizeValue
+            // canvas
             // 
-            lblBrushSizeValue.AutoSize = true;
-            lblBrushSizeValue.Location = new Point(3, 481);
-            lblBrushSizeValue.Name = "lblBrushSizeValue";
-            lblBrushSizeValue.Size = new Size(13, 15);
-            lblBrushSizeValue.TabIndex = 13;
-            lblBrushSizeValue.Text = "5";
+            canvas.Location = new Point(3, 3);
+            canvas.Name = "canvas";
+            canvas.Size = new Size(744, 511);
+            canvas.SizeMode = PictureBoxSizeMode.CenterImage;
+            canvas.TabIndex = 2;
+            canvas.TabStop = false;
+            canvas.Paint += canvas_Paint;
+            canvas.MouseDown += canvas_MouseDown;
+            canvas.MouseMove += canvas_MouseMove;
+            canvas.MouseUp += canvas_MouseUp;
+            // 
+            // webMapa
+            // 
+            webMapa.AllowExternalDrop = true;
+            webMapa.CreationProperties = null;
+            webMapa.DefaultBackgroundColor = Color.White;
+            webMapa.Location = new Point(0, 520);
+            webMapa.Name = "webMapa";
+            webMapa.Size = new Size(747, 136);
+            webMapa.TabIndex = 1;
+            webMapa.ZoomFactor = 1D;
+            // 
+            // txtCoordenadas
+            // 
+            txtCoordenadas.Location = new Point(756, 594);
+            txtCoordenadas.Name = "txtCoordenadas";
+            txtCoordenadas.Size = new Size(232, 23);
+            txtCoordenadas.TabIndex = 2;
+            // 
+            // btnMostrarUbicacion
+            // 
+            btnMostrarUbicacion.Location = new Point(800, 632);
+            btnMostrarUbicacion.Name = "btnMostrarUbicacion";
+            btnMostrarUbicacion.Size = new Size(134, 24);
+            btnMostrarUbicacion.TabIndex = 3;
+            btnMostrarUbicacion.Text = "Mostrar Ubicacion";
+            btnMostrarUbicacion.UseVisualStyleBackColor = true;
+            btnMostrarUbicacion.Click += btnMostrarUbicacion_Click;
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1000, 692);
+            ClientSize = new Size(1000, 668);
+            Controls.Add(btnMostrarUbicacion);
+            Controls.Add(txtCoordenadas);
+            Controls.Add(webMapa);
             Controls.Add(tableLayoutPanel);
             Name = "Form1";
             Text = "Simple Photo Editor";
             FormClosing += Form1_FormClosing;
             tableLayoutPanel.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)canvas).EndInit();
             panelControls.ResumeLayout(false);
             panelControls.PerformLayout();
             groupAdjusts.ResumeLayout(false);
@@ -334,7 +366,10 @@
             ((System.ComponentModel.ISupportInitialize)trackContrast).EndInit();
             ((System.ComponentModel.ISupportInitialize)trackSaturation).EndInit();
             ((System.ComponentModel.ISupportInitialize)trackBrushSize).EndInit();
+            ((System.ComponentModel.ISupportInitialize)canvas).EndInit();
+            ((System.ComponentModel.ISupportInitialize)webMapa).EndInit();
             ResumeLayout(false);
+            PerformLayout();
         }
 
         private System.Windows.Forms.TableLayoutPanel tableLayoutPanel;
@@ -356,11 +391,15 @@
         private System.Windows.Forms.TrackBar trackContrast;
         private System.Windows.Forms.Label lblSaturation;
         private System.Windows.Forms.TrackBar trackSaturation;
-        private DoubleBufferedPictureBox canvas;
         private System.Windows.Forms.Label lblBrushSize;
         private System.Windows.Forms.TrackBar trackBrushSize;
         private System.Windows.Forms.Label lblBrushSizeValue;
 
         #endregion
+
+        private PictureBox canvas;
+        private Microsoft.Web.WebView2.WinForms.WebView2 webMapa;
+        private TextBox txtCoordenadas;
+        private Button btnMostrarUbicacion;
     }
 }

@@ -16,13 +16,14 @@ namespace edf
         private Rectangle cropRect = Rectangle.Empty;
         private Color brushColor = Color.Black;
         private int brushSize = 5;
+        private double lat;
+        private double lon;
 
         public Form1()
         {
             InitializeComponent();
         }
 
-        // Dispose bitmaps when the form is closing to avoid duplicate Dispose override in Designer
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
             loadedBitmap?.Dispose();
@@ -47,17 +48,125 @@ namespace edf
         {
             using var ofd = new OpenFileDialog();
             ofd.Filter = "All Image Files|*.bmp;*.dib;*.jpg;*.jpeg;*.jpe;*.jfif;*.png;*.gif;*.tif;*.tiff;*.ico|All Files|*.*";
+
             if (ofd.ShowDialog() != DialogResult.OK) return;
 
             try
             {
+                // 1. Cargamos la imagen (Tu parte original)
                 var loaded = new Bitmap(ofd.FileName);
-                LoadBitmap(loaded);
+                LoadBitmap(loaded); // Esto actualiza el canvas y el workingBitmap
+
+                // 2. Implementación de GPS (Lo que quieres agregar)
+                // Usamos 'loaded' que ya es la imagen abierta
+                var coordenadas = ObtenerCoordenadas(loaded);
+
+                if (coordenadas != null)
+                {
+                    txtCoordenadas.Text = $"{coordenadas.Value.lat}, {coordenadas.Value.lon}";
+
+                    // Actualizamos variables globales y mostramos mapa
+                    lat = coordenadas.Value.lat;
+                    lon = coordenadas.Value.lon;
+                    MostrarMapa(lat, lon);
+                }
+                else
+                {
+                    txtCoordenadas.Text = "No se encontraron datos GPS.";
+                }
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"No se pudo abrir el archivo como imagen:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private async void MostrarMapa(double lat, double lon)
+        {
+            await webMapa.EnsureCoreWebView2Async();
+
+            string html = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+</head>
+<body style='margin:0'>
+    <iframe
+        width='100%'
+        height='100%'
+        frameborder='0'
+        style='border:0'
+        src='https://www.google.com/maps?q={lat},{lon}&z=10&output=embed'>
+    </iframe>
+</body>
+</html>";
+
+            webMapa.NavigateToString(html);
+        }
+
+        private (double lat, double lon)? ObtenerCoordenadas(Image img)
+        {
+            try
+            {
+                // IDs EXIF para GPS
+                const int GPSLatitudeRef = 0x0001;
+                const int GPSLatitude = 0x0002;
+                const int GPSLongitudeRef = 0x0003;
+                const int GPSLongitude = 0x0004;
+
+                if (!img.PropertyIdList.Contains(GPSLatitude) ||
+                    !img.PropertyIdList.Contains(GPSLongitude))
+                    return null;
+
+                var latRef = GetString(img.GetPropertyItem(GPSLatitudeRef));
+                var lonRef = GetString(img.GetPropertyItem(GPSLongitudeRef));
+
+                lat = ConvertToDegrees(img.GetPropertyItem(GPSLatitude).Value);
+                lon = ConvertToDegrees(img.GetPropertyItem(GPSLongitude).Value);
+
+                // Ajustar signo según referencia (N/S, E/O)
+                if (latRef == "S") lat = -lat;
+                if (lonRef == "W") lon = -lon;
+
+                return (lat, lon);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private string GetString(PropertyItem prop)
+        {
+            return System.Text.Encoding.ASCII.GetString(prop.Value).Trim('\0');
+        }
+
+        private double ConvertToDegrees(byte[] value)
+        {
+            // Cada coordenada tiene 3 racionales: grados, minutos, segundos
+            double grados = ToRational(value, 0);
+            double minutos = ToRational(value, 8);
+            double segundos = ToRational(value, 16);
+
+            return grados + (minutos / 60.0) + (segundos / 3600.0);
+        }
+
+        private double ToRational(byte[] value, int offset)
+        {
+            uint numerator = BitConverter.ToUInt32(value, offset);
+            uint denominator = BitConverter.ToUInt32(value, offset + 4);
+            return denominator != 0 ? (double)numerator / denominator : 0;
+        }
+
+        private void btnMostrarUbicacion_Click(object sender, EventArgs e)
+        {
+            System.Diagnostics.Process.Start(
+          new System.Diagnostics.ProcessStartInfo
+          {
+              FileName = $"https://www.google.com/maps?q={lat},{lon}",
+              UseShellExecute = true
+          });
         }
 
         private void LoadBitmap(Bitmap bmp)
@@ -272,7 +381,6 @@ namespace edf
             return new Rectangle(x, y, width, height);
         }
 
-        // Custom paint to show crop rectangle overlay
         private void canvas_Paint(object? sender, PaintEventArgs e)
         {
             if (cropRect != Rectangle.Empty)
@@ -283,6 +391,11 @@ namespace edf
         }
 
         private void lblContrast_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void tableLayoutPanel_Paint(object sender, PaintEventArgs e)
         {
 
         }
