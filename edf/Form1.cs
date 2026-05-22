@@ -218,7 +218,6 @@ namespace edf
             if (string.IsNullOrWhiteSpace(input))
                 return false;
 
-            // Intenta parsear formato con símbolos (ej: "26.79692° N, 101.42861° O")
             if (TryParseWithSymbols(input, out latitude, out longitude))
                 return true;
 
