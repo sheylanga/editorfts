@@ -310,7 +310,7 @@
             canvas.Location = new Point(3, 3);
             canvas.Name = "canvas";
             canvas.Size = new Size(744, 511);
-            canvas.SizeMode = PictureBoxSizeMode.CenterImage;
+            canvas.SizeMode = PictureBoxSizeMode.Zoom;
             canvas.TabIndex = 2;
             canvas.TabStop = false;
             canvas.Paint += canvas_Paint;
@@ -370,6 +370,7 @@
             Text = "Simple Photo Editor";
             FormClosing += Form1_FormClosing;
             tableLayoutPanel.ResumeLayout(false);
+            tableLayoutPanel.PerformLayout();
             panelControls.ResumeLayout(false);
             panelControls.PerformLayout();
             groupAdjusts.ResumeLayout(false);
