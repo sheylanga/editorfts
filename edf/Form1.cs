@@ -351,7 +351,120 @@ namespace edf
             if (sfd.ShowDialog() != DialogResult.OK) return;
 
             var fmt = sfd.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ? ImageFormat.Jpeg : ImageFormat.Png;
-            workingBitmap.Save(sfd.FileName, fmt);
+            
+            // Si tenemos coordenadas válidas y es JPEG, agrégalas a los metadatos EXIF
+            if ((lat != 0 || lon != 0) && fmt == ImageFormat.Jpeg)
+            {
+                try
+                {
+                    SaveImageWithGpsData(workingBitmap, sfd.FileName, lat, lon);
+                    MessageBox.Show("Imagen guardada con datos GPS correctamente.", "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch
+                {
+                    workingBitmap.Save(sfd.FileName, fmt);
+                    MessageBox.Show("Imagen guardada sin datos GPS.", "Advertencia", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            else
+            {
+                workingBitmap.Save(sfd.FileName, fmt);
+                MessageBox.Show("Imagen guardada correctamente.", "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void SaveImageWithGpsData(Bitmap bmp, string filePath, double latitude, double longitude)
+        {
+            // Crear una copia con EXIF
+            using var bmpCopy = (Bitmap)bmp.Clone();
+            
+            // Obtener los PropertyItems existentes
+            foreach (var propId in bmpCopy.PropertyIdList)
+            {
+                try
+                {
+                    var propItem = bmpCopy.GetPropertyItem(propId);
+                    bmpCopy.SetPropertyItem(propItem);
+                }
+                catch { }
+            }
+
+            // Crear y agregar datos GPS
+            try
+            {
+                // GPS Latitude Reference (N/S)
+                PropertyItem latRef = (PropertyItem)typeof(PropertyItem)
+                    .GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, Type.EmptyTypes, null)
+                    .Invoke(null);
+                latRef.Id = 0x0001;
+                latRef.Type = 2; // ASCII
+                latRef.Value = System.Text.Encoding.ASCII.GetBytes(latitude >= 0 ? "N\0" : "S\0");
+                latRef.Len = latRef.Value.Length;
+                bmpCopy.SetPropertyItem(latRef);
+
+                // GPS Longitude Reference (E/W)
+                PropertyItem lonRef = (PropertyItem)typeof(PropertyItem)
+                    .GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, Type.EmptyTypes, null)
+                    .Invoke(null);
+                lonRef.Id = 0x0003;
+                lonRef.Type = 2; // ASCII
+                lonRef.Value = System.Text.Encoding.ASCII.GetBytes(longitude >= 0 ? "E\0" : "W\0");
+                lonRef.Len = lonRef.Value.Length;
+                bmpCopy.SetPropertyItem(lonRef);
+
+                // GPS Latitude
+                PropertyItem latProp = (PropertyItem)typeof(PropertyItem)
+                    .GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, Type.EmptyTypes, null)
+                    .Invoke(null);
+                latProp.Id = 0x0002;
+                latProp.Type = 5; // Rational
+                latProp.Value = ConvertCoordinateToExifFormat(Math.Abs(latitude));
+                latProp.Len = latProp.Value.Length;
+                bmpCopy.SetPropertyItem(latProp);
+
+                // GPS Longitude
+                PropertyItem lonProp = (PropertyItem)typeof(PropertyItem)
+                    .GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, Type.EmptyTypes, null)
+                    .Invoke(null);
+                lonProp.Id = 0x0004;
+                lonProp.Type = 5; // Rational
+                lonProp.Value = ConvertCoordinateToExifFormat(Math.Abs(longitude));
+                lonProp.Len = lonProp.Value.Length;
+                bmpCopy.SetPropertyItem(lonProp);
+            }
+            catch { }
+
+            // Guardar con los nuevos datos EXIF
+            bmpCopy.Save(filePath, ImageFormat.Jpeg);
+        }
+
+        private byte[] ConvertCoordinateToExifFormat(double coordinate)
+        {
+            // Formato EXIF: 3 racionales (grados, minutos, segundos)
+            // Cada racional = numerador (4 bytes) + denominador (4 bytes)
+            byte[] result = new byte[24]; // 3 racionales * 8 bytes cada uno
+
+            // Extraer grados, minutos, segundos
+            int degrees = (int)coordinate;
+            double remainder = (coordinate - degrees) * 60;
+            int minutes = (int)remainder;
+            double seconds = (remainder - minutes) * 60;
+
+            // Grados (como racional: grados/1)
+            BitConverter.GetBytes((uint)degrees).CopyTo(result, 0);
+            BitConverter.GetBytes((uint)1).CopyTo(result, 4);
+
+            // Minutos (como racional: minutos/1)
+            BitConverter.GetBytes((uint)minutes).CopyTo(result, 8);
+            BitConverter.GetBytes((uint)1).CopyTo(result, 12);
+
+            // Segundos (como racional: segundos*1000/1000 para mayor precisión)
+            uint secondsNum = (uint)(seconds * 1000);
+            uint secondsDenom = 1000;
+            BitConverter.GetBytes(secondsNum).CopyTo(result, 16);
+            BitConverter.GetBytes(secondsDenom).CopyTo(result, 20);
+
+            return result;
         }
 
         private void btnGray_Click(object? sender, EventArgs e)
