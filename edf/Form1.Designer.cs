@@ -54,6 +54,7 @@
             webMapa = new Microsoft.Web.WebView2.WinForms.WebView2();
             txtCoordenadas = new TextBox();
             btnMostrarUbicacion = new Button();
+            btnVer = new Button();
             tableLayoutPanel.SuspendLayout();
             panelControls.SuspendLayout();
             groupAdjusts.SuspendLayout();
@@ -326,7 +327,7 @@
             webMapa.Name = "webMapa";
             webMapa.Size = new Size(747, 136);
             webMapa.TabIndex = 1;
-            webMapa.ZoomFactor = 1D;
+            webMapa.ZoomFactor = 2D;
             // 
             // txtCoordenadas
             // 
@@ -345,11 +346,22 @@
             btnMostrarUbicacion.UseVisualStyleBackColor = true;
             btnMostrarUbicacion.Click += btnMostrarUbicacion_Click;
             // 
+            // btnVer
+            // 
+            btnVer.Location = new Point(756, 632);
+            btnVer.Name = "btnVer";
+            btnVer.Size = new Size(38, 24);
+            btnVer.TabIndex = 4;
+            btnVer.Text = "Ver";
+            btnVer.UseVisualStyleBackColor = true;
+            btnVer.Click += btnVer_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1000, 668);
+            Controls.Add(btnVer);
             Controls.Add(btnMostrarUbicacion);
             Controls.Add(txtCoordenadas);
             Controls.Add(webMapa);
@@ -394,6 +406,7 @@
         private System.Windows.Forms.Label lblBrushSize;
         private System.Windows.Forms.TrackBar trackBrushSize;
         private System.Windows.Forms.Label lblBrushSizeValue;
+        private Button btnVer;
 
         #endregion
 

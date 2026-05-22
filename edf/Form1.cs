@@ -2,6 +2,8 @@ using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
+using MetadataExtractor;
+using MetadataExtractor.Formats.Exif;
 
 namespace edf
 {
@@ -55,6 +57,7 @@ namespace edf
             {
                 // 1. Cargamos la imagen (Tu parte original)
                 var loaded = new Bitmap(ofd.FileName);
+                loaded.Tag = ofd.FileName; // Guardar la ruta para MetadataExtractor
                 LoadBitmap(loaded); // Esto actualiza el canvas y el workingBitmap
 
                 // 2. Implementación de GPS (Lo que quieres agregar)
@@ -109,25 +112,24 @@ namespace edf
         {
             try
             {
-                // IDs EXIF para GPS
-                const int GPSLatitudeRef = 0x0001;
-                const int GPSLatitude = 0x0002;
-                const int GPSLongitudeRef = 0x0003;
-                const int GPSLongitude = 0x0004;
-
-                if (!img.PropertyIdList.Contains(GPSLatitude) ||
-                    !img.PropertyIdList.Contains(GPSLongitude))
+                // Obtener la ruta del archivo desde la imagen
+                string? imagePath = img.Tag as string;
+                if (string.IsNullOrEmpty(imagePath))
                     return null;
 
-                var latRef = GetString(img.GetPropertyItem(GPSLatitudeRef));
-                var lonRef = GetString(img.GetPropertyItem(GPSLongitudeRef));
+                // Extraer metadatos EXIF usando MetadataExtractor
+                var directories = ImageMetadataReader.ReadMetadata(imagePath);
+                var gpsDirectory = directories.OfType<GpsDirectory>().FirstOrDefault();
 
-                lat = ConvertToDegrees(img.GetPropertyItem(GPSLatitude).Value);
-                lon = ConvertToDegrees(img.GetPropertyItem(GPSLongitude).Value);
+                if (gpsDirectory == null)
+                    return null;
 
-                // Ajustar signo según referencia (N/S, E/O)
-                if (latRef == "S") lat = -lat;
-                if (lonRef == "W") lon = -lon;
+                var location = gpsDirectory.GetGeoLocation();
+                if (location == null)
+                    return null;
+
+                lat = location.Latitude;
+                lon = location.Longitude;
 
                 return (lat, lon);
             }
@@ -142,31 +144,177 @@ namespace edf
             return System.Text.Encoding.ASCII.GetString(prop.Value).Trim('\0');
         }
 
-        private double ConvertToDegrees(byte[] value)
-        {
-            // Cada coordenada tiene 3 racionales: grados, minutos, segundos
-            double grados = ToRational(value, 0);
-            double minutos = ToRational(value, 8);
-            double segundos = ToRational(value, 16);
-
-            return grados + (minutos / 60.0) + (segundos / 3600.0);
-        }
-
-        private double ToRational(byte[] value, int offset)
-        {
-            uint numerator = BitConverter.ToUInt32(value, offset);
-            uint denominator = BitConverter.ToUInt32(value, offset + 4);
-            return denominator != 0 ? (double)numerator / denominator : 0;
-        }
-
         private void btnMostrarUbicacion_Click(object sender, EventArgs e)
         {
-            System.Diagnostics.Process.Start(
-          new System.Diagnostics.ProcessStartInfo
-          {
-              FileName = $"https://www.google.com/maps?q={lat},{lon}",
-              UseShellExecute = true
-          });
+            // Primero intenta usar las variables globales lat/lon
+            if (lat != 0 && lon != 0)
+            {
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = $"https://www.google.com/maps?q={lat},{lon}",
+                        UseShellExecute = true
+                    });
+                return;
+            }
+
+            // Si no hay coordenadas globales, intenta parsear del txtCoordenadas
+            if (TryParseCoordinates(txtCoordenadas.Text, out double latitude, out double longitude))
+            {
+                lat = latitude;
+                lon = longitude;
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = $"https://www.google.com/maps?q={lat},{lon}",
+                        UseShellExecute = true
+                    });
+            }
+            else
+            {
+                MessageBox.Show("Por favor ingresa coordenadas válidas primero (ej: 26.79692, 101.42861)", "Coordenadas inválidas", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void btnVer_Click(object? sender, EventArgs e)
+        {
+            if (loadedBitmap == null)
+            {
+                txtCoordenadas.Text = "No hay imagen cargada.";
+                return;
+            }
+
+            // Primero intenta obtener coordenadas del EXIF
+            var coordenadas = ObtenerCoordenadas(loadedBitmap);
+
+            if (coordenadas != null)
+            {
+                lat = coordenadas.Value.lat;
+                lon = coordenadas.Value.lon;
+                txtCoordenadas.Text = $"{coordenadas.Value.lat}, {coordenadas.Value.lon}";
+                MostrarMapa(lat, lon);
+            }
+            else
+            {
+                // Si no hay GPS, intenta parsear coordenadas ingresadas manualmente
+                if (TryParseCoordinates(txtCoordenadas.Text, out double latitude, out double longitude))
+                {
+                    lat = latitude;
+                    lon = longitude;
+                    MostrarMapa(lat, lon);
+                }
+                else
+                {
+                    txtCoordenadas.Text = "No se encontraron datos GPS. Ingresa coordenadas manualmente (ej: 26.79692, 101.42861)";
+                }
+            }
+        }
+
+        private bool TryParseCoordinates(string input, out double latitude, out double longitude)
+        {
+            latitude = 0;
+            longitude = 0;
+
+            if (string.IsNullOrWhiteSpace(input))
+                return false;
+
+            // Intenta parsear formato con símbolos (ej: "26.79692° N, 101.42861° O")
+            if (TryParseWithSymbols(input, out latitude, out longitude))
+                return true;
+
+            // Intenta parsear formato simple (ej: "26.79692, 101.42861")
+            var parts = input.Split(',');
+            if (parts.Length != 2)
+                return false;
+
+            if (double.TryParse(parts[0].Trim(), out latitude) &&
+                double.TryParse(parts[1].Trim(), out longitude))
+            {
+                // Validar que sean coordenadas válidas
+                if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool TryParseWithSymbols(string input, out double latitude, out double longitude)
+        {
+            latitude = 0;
+            longitude = 0;
+
+            try
+            {
+                // Soporta formatos como: "26.79692° N, 101.42861° O" o "26.79692°N, 101.42861°O"
+                var parts = input.Split(',');
+                if (parts.Length != 2)
+                    return false;
+
+                var latPart = parts[0].Trim();
+                var lonPart = parts[1].Trim();
+
+                // Extraer latitud
+                if (!ExtractCoordinate(latPart, out latitude, out string latDir))
+                    return false;
+
+                // Extraer longitud
+                if (!ExtractCoordinate(lonPart, out longitude, out string lonDir))
+                    return false;
+
+                // Aplicar signos según dirección
+                if (latDir.Equals("S", StringComparison.OrdinalIgnoreCase))
+                    latitude = -latitude;
+
+                if (lonDir.Equals("W", StringComparison.OrdinalIgnoreCase) || 
+                    lonDir.Equals("O", StringComparison.OrdinalIgnoreCase))
+                    longitude = -longitude;
+
+                // Validar rangos
+                if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180)
+                    return true;
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool ExtractCoordinate(string input, out double value, out string direction)
+        {
+            value = 0;
+            direction = "";
+
+            // Remover espacios
+            input = input.Replace(" ", "").ToUpper();
+
+            // Buscar caracteres especiales y dirección
+            char[] separators = { '°', '°', '°' }; // diferentes tipos de grado
+            var parts = input.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length < 1)
+                return false;
+
+            // El primer parte debe ser el número
+            if (!double.TryParse(parts[0], out value))
+                return false;
+
+            // La segunda parte (si existe) es la dirección
+            if (parts.Length > 1)
+            {
+                direction = parts[1];
+                if (direction.Length > 0)
+                    direction = direction[0].ToString();
+            }
+
+            // Si no hay dirección explícita, asumimos la predeterminada
+            if (string.IsNullOrEmpty(direction))
+            {
+                direction = "N"; // Latitud predeterminada es Norte
+            }
+
+            return true;
         }
 
         private void LoadBitmap(Bitmap bmp)
