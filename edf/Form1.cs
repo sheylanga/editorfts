@@ -1,9 +1,7 @@
-using System;
+ï»¿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
-using MetadataExtractor;
-using MetadataExtractor.Formats.Exif;
 
 namespace edf
 {
@@ -18,8 +16,8 @@ namespace edf
         private Rectangle cropRect = Rectangle.Empty;
         private Color brushColor = Color.Black;
         private int brushSize = 5;
-        private double lat;
-        private double lon;
+        private double currentLatitude;
+        private double currentLongitude;
 
         public Form1()
         {
@@ -55,23 +53,18 @@ namespace edf
 
             try
             {
-                // 1. Cargamos la imagen (Tu parte original)
-                var loaded = new Bitmap(ofd.FileName);
-                loaded.Tag = ofd.FileName; // Guardar la ruta para MetadataExtractor
-                LoadBitmap(loaded); // Esto actualiza el canvas y el workingBitmap
+                var loadedImage = new Bitmap(ofd.FileName);
+                loadedImage.Tag = ofd.FileName;
+                LoadBitmap(loadedImage);
 
-                // 2. Implementación de GPS (Lo que quieres agregar)
-                // Usamos 'loaded' que ya es la imagen abierta
-                var coordenadas = ObtenerCoordenadas(loaded);
+                var coordinates = GpsMetadataManager.ExtractCoordinatesFromImage(loadedImage);
 
-                if (coordenadas != null)
+                if (coordinates.HasValue)
                 {
-                    txtCoordenadas.Text = $"{coordenadas.Value.lat}, {coordenadas.Value.lon}";
-
-                    // Actualizamos variables globales y mostramos mapa
-                    lat = coordenadas.Value.lat;
-                    lon = coordenadas.Value.lon;
-                    MostrarMapa(lat, lon);
+                    currentLatitude = coordinates.Value.latitude;
+                    currentLongitude = coordinates.Value.longitude;
+                    txtCoordenadas.Text = $"{currentLatitude}, {currentLongitude}";
+                    DisplayMapWithCoordinates(currentLatitude, currentLongitude);
                 }
                 else
                 {
@@ -84,7 +77,7 @@ namespace edf
             }
         }
 
-        private async void MostrarMapa(double lat, double lon)
+        private async void DisplayMapWithCoordinates(double latitude, double longitude)
         {
             await webMapa.EnsureCoreWebView2Async();
 
@@ -100,7 +93,7 @@ namespace edf
         height='100%'
         frameborder='0'
         style='border:0'
-        src='https://www.google.com/maps?q={lat},{lon}&z=10&output=embed'>
+        src='https://www.google.com/maps?q={latitude},{longitude}&z=10&output=embed'>
     </iframe>
 </body>
 </html>";
@@ -118,8 +111,8 @@ namespace edf
                     return null;
 
                 // Extraer metadatos EXIF usando MetadataExtractor
-                var directories = ImageMetadataReader.ReadMetadata(imagePath);
-                var gpsDirectory = directories.OfType<GpsDirectory>().FirstOrDefault();
+                var directories = MetadataExtractor.ImageMetadataReader.ReadMetadata(imagePath);
+                var gpsDirectory = directories.OfType<MetadataExtractor.Formats.Exif.GpsDirectory>().FirstOrDefault();
 
                 if (gpsDirectory == null)
                     return null;
@@ -128,10 +121,7 @@ namespace edf
                 if (location == null)
                     return null;
 
-                lat = location.Latitude;
-                lon = location.Longitude;
-
-                return (lat, lon);
+                return (location.Latitude, location.Longitude);
             }
             catch
             {
@@ -146,34 +136,32 @@ namespace edf
 
         private void btnMostrarUbicacion_Click(object sender, EventArgs e)
         {
-            // Primero intenta usar las variables globales lat/lon
-            if (lat != 0 && lon != 0)
+            if (currentLatitude != 0 && currentLongitude != 0)
             {
-                System.Diagnostics.Process.Start(
-                    new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = $"https://www.google.com/maps?q={lat},{lon}",
-                        UseShellExecute = true
-                    });
+                OpenMapInBrowser(currentLatitude, currentLongitude);
                 return;
             }
 
-            // Si no hay coordenadas globales, intenta parsear del txtCoordenadas
-            if (TryParseCoordinates(txtCoordenadas.Text, out double latitude, out double longitude))
+            if (GpsMetadataManager.TryParseCoordinates(txtCoordenadas.Text, out double latitude, out double longitude))
             {
-                lat = latitude;
-                lon = longitude;
-                System.Diagnostics.Process.Start(
-                    new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = $"https://www.google.com/maps?q={lat},{lon}",
-                        UseShellExecute = true
-                    });
+                currentLatitude = latitude;
+                currentLongitude = longitude;
+                OpenMapInBrowser(latitude, longitude);
             }
             else
             {
-                MessageBox.Show("Por favor ingresa coordenadas válidas primero (ej: 26.79692, 101.42861)", "Coordenadas inválidas", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Por favor ingresa coordenadas vÃ¡lidas primero (ej: 26.79692, 101.42861)", "Coordenadas invÃ¡lidas", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        private void OpenMapInBrowser(double latitude, double longitude)
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = $"https://www.google.com/maps?q={latitude},{longitude}",
+                    UseShellExecute = true
+                });
         }
 
         private void btnVer_Click(object? sender, EventArgs e)
@@ -184,136 +172,30 @@ namespace edf
                 return;
             }
 
-            // Primero intenta obtener coordenadas del EXIF
-            var coordenadas = ObtenerCoordenadas(loadedBitmap);
+            var coordinates = ObtenerCoordenadas(loadedBitmap);
 
-            if (coordenadas != null)
+            if (coordinates.HasValue)
             {
-                lat = coordenadas.Value.lat;
-                lon = coordenadas.Value.lon;
-                txtCoordenadas.Text = $"{coordenadas.Value.lat}, {coordenadas.Value.lon}";
-                MostrarMapa(lat, lon);
+                currentLatitude = coordinates.Value.lat;
+                currentLongitude = coordinates.Value.lon;
+                txtCoordenadas.Text = $"{coordinates.Value.lat}, {coordinates.Value.lon}";
+                DisplayMapWithCoordinates(currentLatitude, currentLongitude);
+            }
+            else if (GpsMetadataManager.TryParseCoordinates(txtCoordenadas.Text, out double latitude, out double longitude))
+            {
+                currentLatitude = latitude;
+                currentLongitude = longitude;
+                DisplayMapWithCoordinates(latitude, longitude);
             }
             else
             {
-                // Si no hay GPS, intenta parsear coordenadas ingresadas manualmente
-                if (TryParseCoordinates(txtCoordenadas.Text, out double latitude, out double longitude))
-                {
-                    lat = latitude;
-                    lon = longitude;
-                    MostrarMapa(lat, lon);
-                }
-                else
-                {
-                    txtCoordenadas.Text = "No se encontraron datos GPS. Ingresa coordenadas manualmente (ej: 26.79692, 101.42861)";
-                }
+                txtCoordenadas.Text = "No se encontraron datos GPS. Ingresa coordenadas manualmente (ej: 26.79692, 101.42861)";
             }
         }
 
         private bool TryParseCoordinates(string input, out double latitude, out double longitude)
         {
-            latitude = 0;
-            longitude = 0;
-
-            if (string.IsNullOrWhiteSpace(input))
-                return false;
-
-            if (TryParseWithSymbols(input, out latitude, out longitude))
-                return true;
-
-            // Intenta parsear formato simple (ej: "26.79692, 101.42861")
-            var parts = input.Split(',');
-            if (parts.Length != 2)
-                return false;
-
-            if (double.TryParse(parts[0].Trim(), out latitude) &&
-                double.TryParse(parts[1].Trim(), out longitude))
-            {
-                // Validar que sean coordenadas válidas
-                if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180)
-                    return true;
-            }
-
-            return false;
-        }
-
-        private bool TryParseWithSymbols(string input, out double latitude, out double longitude)
-        {
-            latitude = 0;
-            longitude = 0;
-
-            try
-            {
-                // Soporta formatos como: "26.79692° N, 101.42861° O" o "26.79692°N, 101.42861°O"
-                var parts = input.Split(',');
-                if (parts.Length != 2)
-                    return false;
-
-                var latPart = parts[0].Trim();
-                var lonPart = parts[1].Trim();
-
-                // Extraer latitud
-                if (!ExtractCoordinate(latPart, out latitude, out string latDir))
-                    return false;
-
-                // Extraer longitud
-                if (!ExtractCoordinate(lonPart, out longitude, out string lonDir))
-                    return false;
-
-                // Aplicar signos según dirección
-                if (latDir.Equals("S", StringComparison.OrdinalIgnoreCase))
-                    latitude = -latitude;
-
-                if (lonDir.Equals("W", StringComparison.OrdinalIgnoreCase) || 
-                    lonDir.Equals("O", StringComparison.OrdinalIgnoreCase))
-                    longitude = -longitude;
-
-                // Validar rangos
-                if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180)
-                    return true;
-
-                return false;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private bool ExtractCoordinate(string input, out double value, out string direction)
-        {
-            value = 0;
-            direction = "";
-
-            // Remover espacios
-            input = input.Replace(" ", "").ToUpper();
-
-            // Buscar caracteres especiales y dirección
-            char[] separators = { '°', '°', '°' }; // diferentes tipos de grado
-            var parts = input.Split(separators, StringSplitOptions.RemoveEmptyEntries);
-
-            if (parts.Length < 1)
-                return false;
-
-            // El primer parte debe ser el número
-            if (!double.TryParse(parts[0], out value))
-                return false;
-
-            // La segunda parte (si existe) es la dirección
-            if (parts.Length > 1)
-            {
-                direction = parts[1];
-                if (direction.Length > 0)
-                    direction = direction[0].ToString();
-            }
-
-            // Si no hay dirección explícita, asumimos la predeterminada
-            if (string.IsNullOrEmpty(direction))
-            {
-                direction = "N"; // Latitud predeterminada es Norte
-            }
-
-            return true;
+            return GpsMetadataManager.TryParseCoordinates(input, out latitude, out longitude);
         }
 
         private void LoadBitmap(Bitmap bmp)
@@ -346,125 +228,40 @@ namespace edf
         private void btnSave_Click(object? sender, EventArgs e)
         {
             if (workingBitmap == null) return;
+            
             using var sfd = new SaveFileDialog();
-            sfd.Filter = "PNG|*.png|JPEG|*.jpg";
+            sfd.Filter = "JPEG con GPS|*.jpg|PNG con GPS|*.png";
             if (sfd.ShowDialog() != DialogResult.OK) return;
 
-            var fmt = sfd.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ? ImageFormat.Jpeg : ImageFormat.Png;
-            
-            // Si tenemos coordenadas válidas y es JPEG, agrégalas a los metadatos EXIF
-            if ((lat != 0 || lon != 0) && fmt == ImageFormat.Jpeg)
+            // Si quiere guardar PNG con coordenadas GPS
+            if (sfd.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase) &&
+                (currentLatitude != 0 || currentLongitude != 0))
             {
-                try
-                {
-                    SaveImageWithGpsData(workingBitmap, sfd.FileName, lat, lon);
-                    MessageBox.Show("Imagen guardada con datos GPS correctamente.", "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                catch
-                {
-                    workingBitmap.Save(sfd.FileName, fmt);
-                    MessageBox.Show("Imagen guardada sin datos GPS.", "Advertencia", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
+                ShowPngGpsWarning();
             }
-            else
-            {
-                workingBitmap.Save(sfd.FileName, fmt);
-                MessageBox.Show("Imagen guardada correctamente.", "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
+
+            ImageSaveManager.SaveImageWithOptionalGpsData(workingBitmap, sfd.FileName, currentLatitude, currentLongitude);
+        }
+
+        private void ShowPngGpsWarning()
+        {
+            MessageBox.Show(
+                "âœ… PNG con GPS Soportado\n\n" +
+                "Las coordenadas GPS se guardarÃ¡n en los metadatos EXIF del PNG.\n" +
+                "El archivo seguirÃ¡ siendo PNG sin cambios de extensiÃ³n.",
+                "InformaciÃ³n GPS PNG",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
 
         private void SaveImageWithGpsData(Bitmap bmp, string filePath, double latitude, double longitude)
         {
-            // Crear una copia con EXIF
-            using var bmpCopy = (Bitmap)bmp.Clone();
-            
-            // Obtener los PropertyItems existentes
-            foreach (var propId in bmpCopy.PropertyIdList)
-            {
-                try
-                {
-                    var propItem = bmpCopy.GetPropertyItem(propId);
-                    bmpCopy.SetPropertyItem(propItem);
-                }
-                catch { }
-            }
-
-            // Crear y agregar datos GPS
-            try
-            {
-                // GPS Latitude Reference (N/S)
-                PropertyItem latRef = (PropertyItem)typeof(PropertyItem)
-                    .GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, Type.EmptyTypes, null)
-                    .Invoke(null);
-                latRef.Id = 0x0001;
-                latRef.Type = 2; // ASCII
-                latRef.Value = System.Text.Encoding.ASCII.GetBytes(latitude >= 0 ? "N\0" : "S\0");
-                latRef.Len = latRef.Value.Length;
-                bmpCopy.SetPropertyItem(latRef);
-
-                // GPS Longitude Reference (E/W)
-                PropertyItem lonRef = (PropertyItem)typeof(PropertyItem)
-                    .GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, Type.EmptyTypes, null)
-                    .Invoke(null);
-                lonRef.Id = 0x0003;
-                lonRef.Type = 2; // ASCII
-                lonRef.Value = System.Text.Encoding.ASCII.GetBytes(longitude >= 0 ? "E\0" : "W\0");
-                lonRef.Len = lonRef.Value.Length;
-                bmpCopy.SetPropertyItem(lonRef);
-
-                // GPS Latitude
-                PropertyItem latProp = (PropertyItem)typeof(PropertyItem)
-                    .GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, Type.EmptyTypes, null)
-                    .Invoke(null);
-                latProp.Id = 0x0002;
-                latProp.Type = 5; // Rational
-                latProp.Value = ConvertCoordinateToExifFormat(Math.Abs(latitude));
-                latProp.Len = latProp.Value.Length;
-                bmpCopy.SetPropertyItem(latProp);
-
-                // GPS Longitude
-                PropertyItem lonProp = (PropertyItem)typeof(PropertyItem)
-                    .GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, Type.EmptyTypes, null)
-                    .Invoke(null);
-                lonProp.Id = 0x0004;
-                lonProp.Type = 5; // Rational
-                lonProp.Value = ConvertCoordinateToExifFormat(Math.Abs(longitude));
-                lonProp.Len = lonProp.Value.Length;
-                bmpCopy.SetPropertyItem(lonProp);
-            }
-            catch { }
-
-            // Guardar con los nuevos datos EXIF
-            bmpCopy.Save(filePath, ImageFormat.Jpeg);
+            ImageSaveManager.SaveImageWithOptionalGpsData(bmp, filePath, latitude, longitude);
         }
 
         private byte[] ConvertCoordinateToExifFormat(double coordinate)
         {
-            // Formato EXIF: 3 racionales (grados, minutos, segundos)
-            // Cada racional = numerador (4 bytes) + denominador (4 bytes)
-            byte[] result = new byte[24]; // 3 racionales * 8 bytes cada uno
-
-            // Extraer grados, minutos, segundos
-            int degrees = (int)coordinate;
-            double remainder = (coordinate - degrees) * 60;
-            int minutes = (int)remainder;
-            double seconds = (remainder - minutes) * 60;
-
-            // Grados (como racional: grados/1)
-            BitConverter.GetBytes((uint)degrees).CopyTo(result, 0);
-            BitConverter.GetBytes((uint)1).CopyTo(result, 4);
-
-            // Minutos (como racional: minutos/1)
-            BitConverter.GetBytes((uint)minutes).CopyTo(result, 8);
-            BitConverter.GetBytes((uint)1).CopyTo(result, 12);
-
-            // Segundos (como racional: segundos*1000/1000 para mayor precisión)
-            uint secondsNum = (uint)(seconds * 1000);
-            uint secondsDenom = 1000;
-            BitConverter.GetBytes(secondsNum).CopyTo(result, 16);
-            BitConverter.GetBytes(secondsDenom).CopyTo(result, 20);
-
-            return result;
+            return GpsMetadataManager.ConvertCoordinateToExifFormat(coordinate);
         }
 
         private void btnGray_Click(object? sender, EventArgs e)
@@ -652,12 +449,10 @@ namespace edf
 
         private void lblContrast_Click(object sender, EventArgs e)
         {
-
         }
 
         private void tableLayoutPanel_Paint(object sender, PaintEventArgs e)
         {
-
         }
     }
 }
